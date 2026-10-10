@@ -20,21 +20,40 @@ var LitFetch = {
     this.pluginID = pluginID;
     this.version = version;
     this.logPath = PathUtils.join(Zotero.DataDirectory.dir, 'litfetch.log');
+    this._log(`init 起 v${version}`);          // 第一件事就落盘，后面哪一步炸了也能看出来
 
-    const registered = Zotero.MenuManager.registerMenu({
+    const mm = Zotero.MenuManager;
+    if (!mm || typeof mm.registerMenu !== 'function') {
+      this._log(`Zotero.MenuManager.registerMenu 不可用（MenuManager=${typeof mm}）—— 菜单注册不了`);
+      return;
+    }
+    const label = this._label();
+    const registered = mm.registerMenu({
       menuID: 'litfetch-item-menu',
       pluginID: pluginID,
       target: 'main/library/item',
       menus: [{
         menuType: 'menuitem',
-        l10nID: 'litfetch-fetch-menu',
+        // ponytail: 不靠 l10nID。插件自带的 ftl 不一定被主窗口的 DOM 本地化解析，解析不到就是
+        // 「注册成功但菜单项没字」= 看着像没出现。本机在跑的 v10 插件（zotero-addons 等）都是
+        // 在 onShowing 里直接写 label，照抄这条。
+        onShowing: (event, context) => {
+          if (context && context.menuElem) {
+            context.menuElem.setAttribute('label', label);
+          }
+        },
         onCommand: () => {
           this.fetchSelected().catch((e) => this._fail(e));
         },
       }],
     });
-    // 注册是静默失败的（选项类型不符只返回 false），所以把结果写进日志
-    this._log(`registerMenu -> ${registered} (v${version})`);
+    // 注册是静默失败的（选项类型不符只返回 false/undefined），所以把结果写进日志
+    this._log(`registerMenu(${label}) -> ${JSON.stringify(registered)}`);
+  },
+
+  _label() {
+    const zh = String(Zotero.locale || '').toLowerCase().startsWith('zh');
+    return zh ? '补 PDF（lit-fetch）' : 'Fetch PDF (lit-fetch)';
   },
 
   destroy() {
@@ -397,11 +416,32 @@ var LitFetch = {
 
   _log(msg) {
     const line = `${new Date().toISOString()} ${msg}`;
-    Zotero.debug(`[litfetch] ${msg}`);
+    try {
+      Zotero.debug(`[litfetch] ${msg}`);
+    }
+    catch (e) { /* debug 通道不可用也无所谓 */ }
+    this._appendLog(line);      // 不 await：写日志失败不该影响功能
+  },
+
+  async _appendLog(line) {
     if (!this.logPath) {
       return;
     }
-    IOUtils.writeUTF8(this.logPath, line + '\n', { mode: 'append' }).catch(() => {});
+    try {
+      // ponytail: 用 Zotero.File 读+写整份（本机 zotero-custom-columns 就是这么记日志的），
+      // 不赌 IOUtils.writeUTF8 的 append 选项在插件沙箱里的行为。
+      let prev = '';
+      try {
+        prev = await Zotero.File.getContentsAsync(this.logPath);
+      }
+      catch (e) {
+        prev = '';   // 第一次写：文件还不存在
+      }
+      await Zotero.File.putContentsAsync(this.logPath, prev + line + '\n');
+    }
+    catch (e) {
+      // 实在写不了就只剩 Zotero.debug 那条（帮助→调试输出日志）
+    }
   },
 };
 

@@ -3,12 +3,11 @@
 用法: python build.py            # 自检 + 打包 xpi
 产物: litfetch.xpi（manifest.json 在根）
 
-自检四类：
+自检三类：
   1. manifest 必填（applications.zotero 的 id / update_url / strict_max_version）—— 缺一项装不上，
      而 Zotero 只给一句笼统的“无法安装”，Firefox 的 linter 也查不出来
-  2. 每个 .js 过一遍 node --check（语法）
-  3. 脚本里没有 innerHTML/outerHTML 赋值（面板/片段类静默坑的通用防线）
-  4. 脚本里用到的 l10nID 在 locale/*.ftl 里真的定义了（否则菜单项没字）
+  2. 本机 Zotero 版本必须落在 [strict_min_version, strict_max_version] 区间里
+  3. 每个 .js 过一遍 node --check（语法），且脚本里没有 innerHTML/outerHTML 赋值
 """
 from __future__ import annotations
 
@@ -24,8 +23,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "litfetch.xpi"
-FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js",
-         "locale/en-US/litfetch.ftl", "locale/zh-CN/litfetch.ftl"]
+FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js"]
 
 
 def find_node() -> str | None:
@@ -96,18 +94,6 @@ def check_js(node: str | None) -> None:
     print(f"JS OK：{len(js)} 个文件语法通过、无 innerHTML 赋值" + ("" if node else "（node 缺席）"))
 
 
-def check_l10n() -> None:
-    used = set()
-    for f in HERE.glob("*.js"):
-        used |= set(re.findall(r"l10nID:\s*'([^']+)'", f.read_text(encoding="utf-8")))
-    defined = set()
-    for f in (HERE / "locale").glob("*/*.ftl"):
-        defined |= set(re.findall(r"^([a-z0-9-]+)\s*=", f.read_text(encoding="utf-8"), re.M))
-    missing = used - defined
-    assert not missing, f"这些 l10nID 在 locale/*.ftl 里没有定义：{sorted(missing)}"
-    print(f"l10n OK：用到 {sorted(used)}，定义 {sorted(defined)}")
-
-
 def build() -> None:
     for rel in FILES:
         assert (HERE / rel).exists(), f"缺文件：{rel}"
@@ -130,7 +116,6 @@ def main() -> int:
     m = check_manifest()
     check_compat(m)
     check_js(node)
-    check_l10n()
     build()
     print("build.py: 全部通过")
     return 0
