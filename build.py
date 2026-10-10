@@ -36,13 +36,50 @@ def find_node() -> str | None:
     return cands[0] if cands else None
 
 
-def check_manifest() -> None:
+def _vt(s: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", str(s))[:3]) or (0,)
+
+
+def installed_zotero_version() -> str | None:
+    ini = Path(r"C:\Program Files\Zotero\app\application.ini")
+    if not ini.exists():
+        return None
+    for line in ini.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip().lower().startswith("version="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def check_compat(m: dict) -> None:
+    """本机 Zotero 必须落在 manifest 的 [strict_min_version, strict_max_version] 里。
+
+    ponytail: Zotero 一升大版本，插件就变「不兼容」而只给一句笼统提示；这条把它变成打包时就报错。
+    """
+    z = m["applications"]["zotero"]
+    lo, hi = z["strict_min_version"], z["strict_max_version"]
+    app = installed_zotero_version()
+    if not app:
+        print("（没读到本机 Zotero 版本，跳过兼容性检查）")
+        return
+    assert _vt(app) >= _vt(lo), f"本机 Zotero {app} 低于 strict_min_version {lo}"
+    if hi.endswith(".*"):
+        assert app.startswith(hi[:-2]), (
+            f"本机 Zotero {app} 不在 strict_max_version {hi} 覆盖内 —— 改 manifest 的 "
+            f"strict_max_version 并顶一个版本号"
+        )
+    else:
+        assert _vt(app) <= _vt(hi), f"本机 Zotero {app} 高于 strict_max_version {hi}"
+    print(f"兼容 OK：本机 Zotero {app} ⊂ [{lo}, {hi}]")
+
+
+def check_manifest() -> dict:
     m = json.loads((HERE / "manifest.json").read_text(encoding="utf-8"))
     z = m.get("applications", {}).get("zotero", {})
     for key in ("id", "update_url", "strict_max_version"):
         assert z.get(key), f"manifest 缺 applications.zotero.{key}"
     assert m.get("manifest_version") == 2, "manifest_version 必须是 2"
-    print(f"manifest OK：{m['name']} {m['version']} → {z['id']} ({z['strict_min_version']}–{z['strict_max_version']})")
+    print(f"manifest OK：{m['name']} {m['version']} → {z['id']}")
+    return m
 
 
 def check_js(node: str | None) -> None:
@@ -90,7 +127,8 @@ def build() -> None:
 
 def main() -> int:
     node = find_node()
-    check_manifest()
+    m = check_manifest()
+    check_compat(m)
     check_js(node)
     check_l10n()
     build()
