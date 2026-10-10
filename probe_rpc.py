@@ -16,13 +16,16 @@ PY = Path(os.environ.get("LITFETCH_PYTHON",
 SCRIPT = Path(os.environ.get("LITFETCH_SCRIPT",
                              r"C:\Users\ptbia\project\lit-fetch\lit_fetch.py"))
 OUT = HERE / "out" / "rpc-probe.pdf"
-IDENT = sys.argv[1] if len(sys.argv) > 1 else "arXiv:2610.04475"
+IDENT = next((a for a in sys.argv[1:] if not a.startswith("-")), "arXiv:2610.04475")
 
 
 def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     if OUT.exists():
         OUT.unlink()
+
+    # --reload：跑完第一条后 touch 一下 lit_fetch.py，再跑一条 —— 验「常驻进程会按 mtime 重载」
+    reload_check = "--reload" in sys.argv
 
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     proc = subprocess.Popen([str(PY), str(SCRIPT), "rpc"], stdin=subprocess.PIPE,
@@ -68,7 +71,19 @@ def main() -> int:
     print(f"文件: {OUT} {'存在' if OUT.exists() else '不存在'}"
           + (f" {OUT.stat().st_size}B" if OUT.exists() else ""))
     print("插件读的键缺了:", missing or "无")
-    print("probe_rpc:", "OK" if ok and not missing else "失败")
+    ok = ok and not missing
+
+    if reload_check:
+        # 常驻进程改了工具代码要不要重启？这里验证它自己会按 mtime 重载
+        SCRIPT.touch()
+        send("fetch", {"identifier": IDENT, "out": str(OUT) + ".2.pdf", "title": "",
+                       "email": "ptbian@pku.edu.cn", "allow_browser": False}, 4)
+        res2 = read_until(4)
+        env2 = res2.get("result") or {}
+        print("← 重载后 fetch:", {k: env2.get(k) for k in ("ok", "route", "bytes")})
+        ok = ok and env2.get("ok") is True
+
+    print("probe_rpc:", "OK" if ok else "失败")
     send("shutdown", {}, 3)
     try:
         read_until(3)
@@ -79,7 +94,12 @@ def main() -> int:
     except Exception:
         pass
     proc.wait(timeout=10)
-    return 0 if ok and not missing else 1
+    if proc.stderr:
+        tail = proc.stderr.read() or ""
+        for line in tail.splitlines():
+            if "重新加载" in line:
+                print("后端 stderr:", line.strip())
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -356,6 +356,13 @@ var LitFetch = {
     }, opts.timeoutS * 1000);
 
     if (!env || !env.ok) {
+      if (env && env.paywalled) {
+        return {
+          item,
+          status: 'paywall',
+          line: `【付费墙】${short} — 没有 OA 副本（Unpaywall: ${env.oa_status || 'closed'}），不是被墙`,
+        };
+      }
       const why = (env && (env.blocked_kind || env.blocked_by)) || 'unknown';
       const code = env && env.exit_code;
       return {
