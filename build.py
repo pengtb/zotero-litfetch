@@ -23,7 +23,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "litfetch.xpi"
-FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js"]
+FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js", "icon.png", "icon@2x.png"]
 
 
 def find_node() -> str | None:
@@ -76,6 +76,9 @@ def check_manifest() -> dict:
     for key in ("id", "update_url", "strict_max_version"):
         assert z.get(key), f"manifest 缺 applications.zotero.{key}"
     assert m.get("manifest_version") == 2, "manifest_version 必须是 2"
+    for size, rel in (m.get("icons") or {}).items():
+        assert (HERE / rel).exists(), f"manifest 里的图标 {rel} 不存在"
+        print(f"  图标 {size}px → {rel}（{ (HERE / rel).stat().st_size }B）")
     print(f"manifest OK：{m['name']} {m['version']} → {z['id']}")
     return m
 

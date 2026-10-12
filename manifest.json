@@ -1,9 +1,13 @@
 {
   "manifest_version": 2,
   "name": "lit-fetch",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "用 lit-fetch 给条目补 PDF 全文（自动识别 DOI / arXiv / PMID）。",
   "homepage_url": "https://github.com/ptbia/zotero-litfetch",
+  "icons": {
+    "48": "icon.png",
+    "96": "icon@2x.png"
+  },
   "applications": {
     "zotero": {
       "id": "litfetch@ptbia.local",

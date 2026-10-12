@@ -1,8 +1,10 @@
 # lit-fetch（Zotero 插件）
 
-给条目补 PDF 全文：右键选中的条目 → 补 PDF（lit-fetch）。插件自己不下载，它调用本机的
-[lit-fetch](https://github.com/)（`project/lit-fetch`，两层：纯 HTTP + 真浏览器兜底），
-拿回 PDF 后作为附件挂到条目上。
+给条目补 PDF 全文：右键选中的条目 → 补 PDF（lit-fetch）。插件自己不下载，它调用本机的 **lit-fetch**
+（两层：纯 HTTP 路线 + 真浏览器兜底），拿回 PDF 后作为附件挂到条目上。
+
+依赖：本机要有 lit-fetch（`lit_fetch.py` + 它的 venv），路径在设置里配（见下）。没有 lit-fetch 时插件装得上，
+但点菜单只会报「起不来」。
 
 ## 装
 
