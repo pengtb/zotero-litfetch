@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "litfetch@ptbia.local": {
+      "updates": [
+        {
+          "version": "0.1.5",
+          "update_link": "https://github.com/pengtb/zotero-litfetch/releases/download/v0.1.5/litfetch.xpi",
+          "update_hash": "sha256:6eed2284fe3effb724e83f4bfab286db239347933d3c1729788a4e75cebd53a8",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.0.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
