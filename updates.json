@@ -3,9 +3,9 @@
     "litfetch@ptbia.local": {
       "updates": [
         {
-          "version": "0.1.5",
-          "update_link": "https://github.com/pengtb/zotero-litfetch/releases/download/v0.1.5/litfetch.xpi",
-          "update_hash": "sha256:6eed2284fe3effb724e83f4bfab286db239347933d3c1729788a4e75cebd53a8",
+          "version": "0.1.6",
+          "update_link": "https://github.com/pengtb/zotero-litfetch/releases/download/v0.1.6/litfetch.xpi",
+          "update_hash": "sha256:c1dab0181778d10f7306582d7460fd94e96c19a11d5ac5d03f630fab94509ef4",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",

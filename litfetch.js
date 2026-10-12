@@ -13,6 +13,8 @@ var LitFetch = {
   busy: false,
   destroyed: false,
   logPath: null,
+  pw: null,          // 当前这轮的进度窗：后端推 note 时往里加行
+  pwLines: 0,        // 这轮已加的行数（防长跑把窗撑爆）
 
   // ── 生命周期 ───────────────────────────────────────────────
   async init({ rootURI, pluginID, version }) {
@@ -123,9 +125,11 @@ var LitFetch = {
       this._readStdout(proc);
       this._readStderr(proc);
       this._log(`已启动 lit-fetch: ${command} ${script} rpc`);
+      this._addProgressLine('▸ 正在启动后端进程…（首次要几秒，起来后常驻）');
       // 确认协议真的通（也顺带把 python 侧 import 完，第一次 fetch 不必再等）
       const pong = await this._call('ping', {}, 30000);
       this._log(`ping -> ${JSON.stringify(pong)}`);
+      this._addProgressLine(`▸ 后端就绪（v${(pong && pong.version) || '?'}）`);
       return proc;
     })();
     try {
@@ -311,6 +315,8 @@ var LitFetch = {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const label = item.getField('title') || `条目 ${item.id}`;
+        this.pw = pw;                 // 这一轮后端的 note 都加进这个窗
+        this.pwLines = 0;
         this._progress(`lit-fetch：${i + 1}/${items.length}　${label.slice(0, 40)}`, [], 0, pw);
         try {
           results.push(await this._fetchOne(item, { outDir, email, allowBrowser, timeoutS }));
@@ -323,6 +329,7 @@ var LitFetch = {
     }
     finally {
       this.busy = false;
+      this.pw = null;               // 这轮完了就别再往后端推的行里加东西
       const lines = results.map((r) => r.line);
       this._progress(`lit-fetch：完成 ${results.filter((r) => r.status === 'ok').length}/${results.length}`,
         lines, results.length ? 15000 : 6000, pw);
@@ -411,9 +418,42 @@ var LitFetch = {
   },
 
   _onProgress(params) {
-    if (params.stage === 'done' && params.ok === false) {
+    const stage = params.stage;
+    if (stage === 'start') {
+      this._addProgressLine(`▸ 处理 ${params.identifier || ''}`.trim());
+      return;
+    }
+    if (stage === 'note') {
+      if (params.message) {
+        this._addProgressLine(`　${this._shortNote(params.message)}`);
+      }
+      return;
+    }
+    if (stage === 'done' && params.ok === false) {
       this._log(`后端报失败：${params.identifier} ${params.route || ''} exit=${params.exit_code}`);
     }
+  },
+
+  // 后端每试一条路推一行；都加进进度窗（过上限就只落日志），不然长跑会把窗撑爆
+  _addProgressLine(text) {
+    this._log(text);
+    const pw = this.pw;
+    if (!pw || this.pwLines >= 14) {
+      return;
+    }
+    try {
+      pw.addLines([text]);
+      pw.show();
+      this.pwLines++;
+    }
+    catch (e) {
+      this._log(`进度窗加行失败：${e.message}`);
+    }
+  },
+
+  _shortNote(msg) {
+    const s = String(msg || '').replace(/\s+/g, ' ').trim();
+    return s.length > 62 ? `${s.slice(0, 61)}…` : s;
   },
 
   _fail(e) {
