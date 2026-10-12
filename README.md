@@ -8,9 +8,11 @@
 
 ## 装
 
-1. `python build.py` 生成 `litfetch.xpi`（会自动做 manifest / 语法 / l10n 三组自检）。
-2. Zotero → 工具 → 插件 → 齿轮 → Install Plugin From File… 选 `litfetch.xpi`，未签名提示选允许。
-3. 重启后：在条目上右键，菜单里出现「补 PDF（lit-fetch）」。
+直接下最新的 `.xpi`（[releases/latest](https://github.com/pengtb/zotero-litfetch/releases/latest)），
+或自己构建：`python build.py` 会做 manifest / 兼容性 / 语法 / 图标四组自检并打出 `litfetch.xpi`。
+
+1. Zotero → 工具 → 插件 → 齿轮 → Install Plugin From File… 选那个 `.xpi`（未签名提示选允许）。
+2. 重启后：在条目上右键，菜单里出现「补 PDF（lit-fetch）」。
 
 多选条目可一起跑；串行执行，一条失败不影响后面的。已有 PDF 附件的条目默认跳过。
 
