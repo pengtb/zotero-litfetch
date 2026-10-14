@@ -369,15 +369,15 @@ var LitFetch = {
     const { outDir, email, allowBrowser, paywall, timeoutS, skipExisting } = this._paths();
     await IOUtils.makeDirectory(outDir, { ignoreExisting: true, createAncestors: true });
     const results = [];
-    const pw = this._progress(this._t('ui.headline0', items.length), [], 0);
+    let pw = null;                  // 当前这篇的进度窗（每篇换新：上一篇的行不留在下一篇里）
 
     try {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const label = item.getField('title') || this._t('ui.item', item.id);
-        this.pw = pw;                 // 这一轮后端的 note 都加进这个窗
+        pw = this._nextItemWindow(pw, this._t('ui.headline', i + 1, items.length, label.slice(0, 40)));
+        this.pw = pw;                 // 这一篇后端的 note 都加进这个窗
         this.pwLines = 0;
-        this._progress(this._t('ui.headline', i + 1, items.length, label.slice(0, 40)), [], 0, pw);
         try {
           results.push(await this._fetchOne(item,
             { outDir, email, allowBrowser, paywall, timeoutS, skipExisting }));
@@ -392,8 +392,9 @@ var LitFetch = {
       this.busy = false;
       this.pw = null;               // 这轮完了就别再往后端推的行里加东西
       const lines = results.map((r) => r.line);
+      this._closeWindow(pw);        // 最后一篇的窗也关掉，收尾另开一个干净的（只有结果行）
       this._progress(this._t('ui.done', results.filter((r) => r.status === 'ok').length,
-        results.length), lines, results.length ? 15000 : 6000, pw);
+        results.length), lines, results.length ? 15000 : 6000);
       lines.forEach((l) => this._log(l));
     }
   },
@@ -463,6 +464,24 @@ var LitFetch = {
   },
 
   // ── UI / 日志 ─────────────────────────────────────────────
+  /** 换一篇：把上一篇那个进度窗关掉、开一个新的 —— 进度窗里就只剩当前这篇的行（用户要的效果）。 */
+  _nextItemWindow(prev, headline) {
+    this._closeWindow(prev);
+    return this._progress(headline, [], 0);
+  },
+
+  _closeWindow(pw) {
+    if (!pw) {
+      return;
+    }
+    try {
+      pw.close();
+    }
+    catch (e) {
+      this._log(this._t('log.pw_failed', e.message));
+    }
+  },
+
   _progress(headline, lines, closeAfterMs, existing) {
     try {
       const pw = existing || new Zotero.ProgressWindow({ closeOnClick: true });

@@ -1,14 +1,17 @@
 /* 进度窗自检：node litfetch.progress.test.js（不依赖 Zotero，但要把 Zotero 的 ProgressWindow stub 出来）。
-   锁住一条实测踩过的坑：Zotero 7 的 `startCloseTimer` 收的是**毫秒**，传 0 = 下一个 tick 关窗。
-   多条目连着下载时「第一篇的提示一出来就没了、后面条目再没提示」，根因就在 `_progress` 每次换标题都
-   传了 0。改 litfetch.js 的 UI 那一段后跑这一条。 */
+   锁住三条实测踩过的事：
+     1. Zotero 7 的 `startCloseTimer` 收**毫秒**，传 0 = 下一个 tick 关窗（以前每换一次标题都传 0，
+        于是多条目连着下载时「第一篇的提示一出来就没了、后面条目再没提示」）；
+     2. 加行前要先 show（窗被用户点掉过 / 上一轮关过要能开回来）；
+     3. 每篇换新窗：上一篇的窗关掉，进度窗里只剩当前这篇的行。
+   改 litfetch.js 的 UI 那一段后跑这一条。 */
 'use strict';
 
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-// ── 最小 stub：只覆盖 _progress / _addProgressLine 走过的路径
+// ── 最小 stub：只覆盖 _progress / _addProgressLine / _nextItemWindow 走过的路径
 function makeWin() {
   const calls = [];
   const win = {
@@ -17,6 +20,7 @@ function makeWin() {
     changeHeadline(t) { calls.push(['changeHeadline', t]); },
     addLines(ls) { calls.push(['addLines', ...ls]); },
     startCloseTimer(ms) { calls.push(['startCloseTimer', ms]); },
+    close() { calls.push('close'); },
   };
   return win;
 }
@@ -63,5 +67,20 @@ assert.strictEqual(LitFetch._label(), '补 PDF（lit-fetch）');
 LitFetch._pref = () => 'en';
 assert.strictEqual(LitFetch._label(), 'Fetch PDF (lit-fetch)');
 
-console.log('litfetch.progress.test.js: OK（关闭计时 2 例 / 加行 2 例 / 文案 2 例）');
+// 6) 每篇换新窗：上一篇的窗要关掉，新窗只带当前这篇的标题（用户要的是「进度窗里只有当前这篇」）
+const made = [];
+Zotero.ProgressWindow = function () { const w = makeWin(); made.push(w); return w; };
+const prev = makeWin();
+const next = LitFetch._nextItemWindow(prev, 'lit-fetch：2/5　第二篇');
+assert.ok(prev.calls.includes('close'), `换篇要先关掉上一篇的窗：${JSON.stringify(prev.calls)}`);
+assert.strictEqual(made.length, 1, '换篇要新开一个窗');
+assert.strictEqual(next, made[0]);
+assert.deepStrictEqual(next.calls.slice(0, 2), ['show', ['changeHeadline', 'lit-fetch：2/5　第二篇']],
+  JSON.stringify(next.calls));
+assert.ok(!next.calls.includes('startCloseTimer'), '轮到自己跑的时候别自己关自己');
+// 第一篇（prev=null）不该去 close 谁
+const first = LitFetch._nextItemWindow(null, 'lit-fetch：1/5　第一篇');
+assert.deepStrictEqual(first.calls.slice(0, 2), ['show', ['changeHeadline', 'lit-fetch：1/5　第一篇']]);
+
+console.log('litfetch.progress.test.js: OK（关闭计时 2 例 / 加行 2 例 / 文案 2 例 / 换篇 5 例）');
 
