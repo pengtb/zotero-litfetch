@@ -1,12 +1,16 @@
 <!-- lit-fetch 的设置面板（Zotero 7+）。挂载见 litfetch.js 的 _registerPrefsPane()。
-     三条约定：
+     四条约定：
        1. 文案不写死在这里 —— 带 data-lf（写 textContent）/ data-lf-label（写 label 属性）的元素由
           preferences.js 按 pref `lang` 实时填上（文案表在 i18n.js，键是 pane.*）。
        2. pref 绑定用 Zotero 自己的 `preference` 属性机制（它读写都带 global=true，落的就是
           extensions.litfetch.*；不带那个参数会落到 extensions.zotero.* 去，见 litfetch.js 的 _pref 注释）。
-       3. 这里不写 onload/oncommand —— 面板脚本跑在沙箱里，内联属性按窗口作用域求值会 ReferenceError，
-          事件都在 preferences.js 里 addEventListener（见那儿顶部的注释）。 -->
-<vbox id="litfetch-prefpane">
+       3. 事件写内联属性（onload / oncommand），函数挂在 Zotero 上 —— 内联属性按「元素所在窗口」的作用域
+          求值，而面板脚本跑在沙箱里（preferences.js 里 `pane.scope = new Cu.Sandbox(...)`）。本机
+          better-bibtex / jasminum / custom-columns / reading-list 都是这么接的。
+       4. 根节点的 xmlns 照 better-bibtex 写一份，省得解析器对 XUL/HTML 前缀另有说法。 -->
+<vbox id="litfetch-prefpane"
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	onload="Zotero.LitFetchPrefs.init()">
 	<vbox class="main-section">
 		<groupbox>
 			<label><html:h2 data-lf="pane.section.fetch"/></label>
@@ -33,7 +37,8 @@
 			<label><html:h2 data-lf="pane.section.lang"/></label>
 			<hbox align="center">
 				<label control="litfetch-lang" data-lf="pane.lang.label"/>
-				<menulist id="litfetch-lang" preference="extensions.litfetch.lang" native="true">
+				<menulist id="litfetch-lang" preference="extensions.litfetch.lang" native="true"
+					oncommand="Zotero.LitFetchPrefs.fill()">
 					<menupopup>
 						<menuitem value="auto" data-lf-label="pane.lang.auto"/>
 						<menuitem value="zh" label="中文"/>

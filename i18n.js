@@ -77,6 +77,8 @@
       'log.pane_ok': '已注册设置面板 {0}',
       'log.pane_broken': 'Zotero.PreferencePanes 不可用（{0}）—— 设置面板注册不了',
       'log.pane_failed': '设置面板注册失败：{0}',
+      'log.pane_script': '设置面板脚本已载入',
+      'log.pane_init': '设置面板初始化完成（onload 跑到了）',
     },
     en: {
       'menu.label': 'Fetch PDF (lit-fetch)',
@@ -146,6 +148,8 @@
       'log.pane_ok': 'registered settings pane {0}',
       'log.pane_broken': 'Zotero.PreferencePanes unavailable ({0}) — settings pane not registered',
       'log.pane_failed': 'registering the settings pane failed: {0}',
+      'log.pane_script': 'settings pane script loaded',
+      'log.pane_init': 'settings pane initialised (onload ran)',
     },
   };
 

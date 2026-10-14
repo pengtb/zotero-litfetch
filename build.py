@@ -133,13 +133,15 @@ def check_i18n_usage() -> None:
 
 def check_pane_xhtml() -> None:
     """preferences.xhtml 必须是良构 XML（Zotero 用 MozXULElement.parseXULToFragment 解它，
-    坏一个标签的表现是「设置面板一片空白」）。`html:` 前缀补个 xmlns 再交给标准解析器。"""
+    坏一个标签的表现是「设置面板一片空白」）。`html:` 前缀给标准解析器补个 xmlns 声明
+    （Zotero 那边的解析器自带这个前缀映射，不用我们声明）。"""
     src = (HERE / "preferences.xhtml").read_text(encoding="utf-8")
-    body = src.replace('<vbox id="litfetch-prefpane">',
-                       '<vbox id="litfetch-prefpane" xmlns:html="http://www.w3.org/1999/xhtml">', 1)
+    body, n = re.subn(r'(<vbox id="litfetch-prefpane")',
+                      r'\1 xmlns:html="http://www.w3.org/1999/xhtml"', src, count=1)
+    assert n == 1, "preferences.xhtml 里找不到根节点 <vbox id=\"litfetch-prefpane\">"
     root = ET.fromstring(body)          # 不合法会抛 ParseError
     assert root.tag.endswith("vbox"), f"根节点是 {root.tag}，应为 vbox"
-    print(f"设置面板 OK：良构 XML，根 <{root.tag}>，{len(list(root.iter()))} 个节点")
+    print(f"设置面板 OK：良构 XML，根 <{root.tag.split('}')[-1]}>，{len(list(root.iter()))} 个节点")
 
 
 def build() -> None:

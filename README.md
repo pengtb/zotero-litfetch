@@ -35,8 +35,8 @@
 
 也可以直接改配置编辑器（设置 → 高级 → 配置编辑器）里 `extensions.litfetch.*` 这些键，效果一样。
 **读写 pref 必须带第二个参数 `true`**（`Zotero.Prefs.get(name, true)`）：不带时 Zotero 会在名字前加
-`extensions.zotero.`，`extensions.litfetch.*` 永远读不到 —— 插件 v0.1.6 之前就是这么写的，等于所有
-设置都不生效，v0.1.7 修掉。
+`extensions.zotero.`，`extensions.litfetch.*` 永远读不到 —— 0.1.6 及以前就是这么写的，等于所有
+设置都不生效，现已修掉。
 
 `lang` 管插件自己的文案（菜单、进度窗、结果行、litfetch.log、设置面板）；后端 lit-fetch 推过来的诊断行
 （`→ 试 unpaywall: …`）是它自己的输出，仍是中文。改这些设置立即生效，不用重启 Zotero。
