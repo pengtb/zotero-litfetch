@@ -22,11 +22,11 @@ var LitFetch = {
     this.pluginID = pluginID;
     this.version = version;
     this.logPath = PathUtils.join(Zotero.DataDirectory.dir, 'litfetch.log');
-    this._log(`init 起 v${version}`);          // 第一件事就落盘，后面哪一步炸了也能看出来
+    this._log(this._t('log.init', version));          // 第一件事就落盘，后面哪一步炸了也能看出来
 
     const mm = Zotero.MenuManager;
     if (!mm || typeof mm.registerMenu !== 'function') {
-      this._log(`Zotero.MenuManager.registerMenu 不可用（MenuManager=${typeof mm}）—— 菜单注册不了`);
+      this._log(this._t('log.menu_broken', typeof mm));
       return;
     }
     const label = this._label();
@@ -50,23 +50,65 @@ var LitFetch = {
       }],
     });
     // 注册是静默失败的（选项类型不符只返回 false/undefined），所以把结果写进日志
-    this._log(`registerMenu(${label}) -> ${JSON.stringify(registered)}`);
+    this._log(this._t('log.registered', label, JSON.stringify(registered)));
+
+    await this._registerPrefsPane();
+  },
+
+  /** 设置面板（设置 → lit-fetch）。注册失败不该拖垮插件，所以整段 try/catch。 */
+  async _registerPrefsPane() {
+    try {
+      const pp = Zotero.PreferencePanes;
+      if (!pp || typeof pp.register !== 'function') {
+        this._log(this._t('log.pane_broken', typeof pp));
+        return;
+      }
+      const id = await pp.register({
+        pluginID: this.pluginID,
+        id: 'litfetch-prefs',
+        src: this.rootURI + 'preferences.xhtml',
+        scripts: [this.rootURI + 'preferences.js'],
+        label: this._t('pane.label'),
+        image: this.rootURI + 'icon.png',
+        helpURL: 'https://github.com/pengtb/zotero-litfetch#配置设置--高级--配置编辑器',
+      });
+      this._log(this._t('log.pane_ok', id));
+    }
+    catch (e) {
+      this._log(this._t('log.pane_failed', e.message));
+    }
+  },
+
+  // ── 语言（pref `lang`：auto|zh|en，默认 auto=跟 Zotero 界面语言）────────────
+  _lang() {
+    return LitFetchI18n.resolve(this._pref('lang', 'auto'), Zotero.locale);
+  },
+
+  _t(key, ...args) {
+    return LitFetchI18n.t(this._lang(), key, ...args);
+  },
+
+  /** i18n 的公开入口（设置面板那段脚本用它填文案，不直接碰 _t）。 */
+  t(key, ...args) {
+    return this._t(key, ...args);
   },
 
   _label() {
-    const zh = String(Zotero.locale || '').toLowerCase().startsWith('zh');
-    return zh ? '补 PDF（lit-fetch）' : 'Fetch PDF (lit-fetch)';
+    return this._t('menu.label');
   },
 
   destroy() {
     this.destroyed = true;
-    this._killChild('插件卸载');
+    this._killChild('plugin unload');   // why 是个技术原因代号，直接英文，中英两种日志里都读得通
   },
 
   // ── 配置 ──────────────────────────────────────────────────
   _pref(key, fallback) {
     try {
-      const v = Zotero.Prefs.get(`extensions.litfetch.${key}`);
+      // ponytail: 第二个参数必须是 true。不带它时 Zotero.Prefs.get 会在名字前加 `extensions.zotero.`
+      // （PREF_BRANCH），于是 `extensions.litfetch.*` 永远读不到、永远走缺口值 —— 设置面板/配置编辑器
+      // 里改的东西全部不生效。设置面板那套机制自己就是用 global=true 读写的（preferences.js）。
+      const v = Zotero.Prefs.get(`extensions.litfetch.${key}`, true);
       return v === undefined || v === null || v === '' ? fallback : v;
     }
     catch (e) {
@@ -74,14 +116,32 @@ var LitFetch = {
     }
   },
 
-  _paths() {
+  /** pref 名字 → 缺口值。就这一份：_paths() 和设置面板（把没设过的 pref 补进库里）都读它。 */
+  _defaults() {
     return {
-      python: this._pref('python', 'C:\\Users\\ptbia\\project\\lit-fetch\\.venv\\Scripts\\python.exe'),
-      script: this._pref('script', 'C:\\Users\\ptbia\\project\\lit-fetch\\lit_fetch.py'),
-      outDir: this._pref('outDir', PathUtils.join(Zotero.DataDirectory.dir, 'litfetch')),
-      email: this._pref('email', 'ptbian@pku.edu.cn'),
-      allowBrowser: this._pref('allowBrowser', true),
-      timeoutS: parseInt(this._pref('timeoutS', 600), 10) || 600,
+      python: 'C:\\Users\\ptbia\\project\\lit-fetch\\.venv\\Scripts\\python.exe',
+      script: 'C:\\Users\\ptbia\\project\\lit-fetch\\lit_fetch.py',
+      outDir: PathUtils.join(Zotero.DataDirectory.dir, 'litfetch'),
+      email: 'ptbian@pku.edu.cn',
+      allowBrowser: true,
+      paywall: true,
+      lang: 'auto',
+      timeoutS: 600,
+      skipExisting: true,
+    };
+  },
+
+  _paths() {
+    const d = this._defaults();
+    return {
+      python: this._pref('python', d.python),
+      script: this._pref('script', d.script),
+      outDir: this._pref('outDir', d.outDir),
+      email: this._pref('email', d.email),
+      allowBrowser: this._pref('allowBrowser', d.allowBrowser),
+      paywall: this._pref('paywall', d.paywall),
+      timeoutS: parseInt(this._pref('timeoutS', d.timeoutS), 10) || d.timeoutS,
+      skipExisting: this._pref('skipExisting', d.skipExisting),
     };
   },
 
@@ -91,7 +151,7 @@ var LitFetch = {
     const mod = CU.importESModule('resource://gre/modules/Subprocess.sys.mjs');
     const Subprocess = mod.Subprocess || mod.default || mod;
     if (!Subprocess || typeof Subprocess.call !== 'function') {
-      throw new Error('Subprocess 模块不可用');
+      throw new Error(this._t('err.subprocess'));
     }
     return Subprocess;
   },
@@ -109,7 +169,7 @@ var LitFetch = {
       let command = python;
       if (!(await IOUtils.exists(command))) {
         command = await Subprocess.pathSearch('python');
-        this._log(`pref 里的 python 不存在，改用 PATH 上的：${command}`);
+        this._log(this._t('log.python_fallback', command));
       }
       const proc = await Subprocess.call({
         command,
@@ -124,12 +184,12 @@ var LitFetch = {
       this.stderrTail = [];
       this._readStdout(proc);
       this._readStderr(proc);
-      this._log(`已启动 lit-fetch: ${command} ${script} rpc`);
-      this._addProgressLine('▸ 正在启动后端进程…（首次要几秒，起来后常驻）');
+      this._log(this._t('log.spawned', command, script));
+      this._addProgressLine(this._t('ui.spawning'));
       // 确认协议真的通（也顺带把 python 侧 import 完，第一次 fetch 不必再等）
       const pong = await this._call('ping', {}, 30000);
       this._log(`ping -> ${JSON.stringify(pong)}`);
-      this._addProgressLine(`▸ 后端就绪（v${(pong && pong.version) || '?'}）`);
+      this._addProgressLine(this._t('ui.ready', (pong && pong.version) || '?'));
       return proc;
     })();
     try {
@@ -145,7 +205,7 @@ var LitFetch = {
     this.child = null;
     this.spawnPromise = null;
     for (const [, pending] of this.pending) {
-      pending.reject(new Error(`子进程已结束（${why}）`));
+      pending.reject(new Error(this._t('err.child_ended', why)));
     }
     this.pending.clear();
     if (proc) {
@@ -153,7 +213,7 @@ var LitFetch = {
         proc.kill();
       }
       catch (e) { /* 已经退出了 */ }
-      this._log(`子进程已终止：${why}`);
+      this._log(this._t('log.child_killed', why));
     }
   },
 
@@ -181,7 +241,7 @@ var LitFetch = {
           msg = JSON.parse(trimmed);
         }
         catch (e) {
-          this._log(`stdout 有非 JSON 行（应走 stderr）：${trimmed.slice(0, 200)}`);
+          this._log(this._t('log.stdout_nonjson', trimmed.slice(0, 200)));
           continue;
         }
         this._dispatch(msg);
@@ -189,8 +249,8 @@ var LitFetch = {
     }
     if (this.child === proc) {
       const tail = this.stderrTail.join(' | ').slice(-400);
-      this._log(`子进程的 stdout 关了${tail ? `；stderr 末尾：${tail}` : ''}`);
-      this._killChild('stdout 关闭');
+      this._log(this._t('log.stdout_closed', tail ? this._t('log.stdout_tail', tail) : ''));
+      this._killChild('stdout closed');
     }
   },
 
@@ -238,7 +298,7 @@ var LitFetch = {
       this._onProgress(msg.params || {});
       return;
     }
-    this._log(`收到未匹配的帧：${JSON.stringify(msg).slice(0, 200)}`);
+    this._log(this._t('log.frame_unmatched', JSON.stringify(msg).slice(0, 200)));
   },
 
   _call(method, params, timeoutMs) {
@@ -247,8 +307,8 @@ var LitFetch = {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         // 超时后协议状态不可知，直接把子进程收掉，下一轮重开
-        this._killChild(`${method} 超时 ${timeoutMs}ms`);
-        reject(new Error(`${method} 超时（${Math.round(timeoutMs / 1000)}s）—— 已重启后端`));
+        this._killChild(this._t('log.timeout_kill', method, timeoutMs));
+        reject(new Error(this._t('log.timeout', method, Math.round(timeoutMs / 1000))));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try {
@@ -257,7 +317,7 @@ var LitFetch = {
       catch (e) {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(new Error(`写子进程失败：${e.message}`));
+        reject(new Error(this._t('log.write_failed', e.message)));
       }
     }));
   },
@@ -274,7 +334,7 @@ var LitFetch = {
       return LitFetchCore.identifierFrom(Zotero.Utilities.extractIdentifiers(text));
     }
     catch (e) {
-      this._log(`抽标识符失败：${e.message}`);
+      this._log(this._t('log.ident_failed', e.message));
       return '';
     }
   },
@@ -294,35 +354,36 @@ var LitFetch = {
   // ── 主流程：给选中的条目补 PDF ──────────────────────────
   async fetchSelected() {
     if (this.busy) {
-      this._log('上一轮还在跑，忽略这次点击');
+      this._log(this._t('log.busy_click'));
       return;
     }
     const pane = Zotero.getActiveZoteroPane();
     const items = pane ? pane.getSelectedItems().filter((i) => i.isRegularItem()) : [];
     if (!items.length) {
-      this._log('没有选中任何文献条目');
-      this._progress('lit-fetch：请先选中文献条目', [], 6000);
+      this._log(this._t('log.no_items'));
+      this._progress(this._t('ui.pick'), [], 6000);
       return;
     }
 
     this.busy = true;
-    const { outDir, email, allowBrowser, timeoutS } = this._paths();
+    const { outDir, email, allowBrowser, paywall, timeoutS, skipExisting } = this._paths();
     await IOUtils.makeDirectory(outDir, { ignoreExisting: true, createAncestors: true });
     const results = [];
-    const pw = this._progress(`lit-fetch：0/${items.length}`, [], 0);
+    const pw = this._progress(this._t('ui.headline0', items.length), [], 0);
 
     try {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        const label = item.getField('title') || `条目 ${item.id}`;
+        const label = item.getField('title') || this._t('ui.item', item.id);
         this.pw = pw;                 // 这一轮后端的 note 都加进这个窗
         this.pwLines = 0;
-        this._progress(`lit-fetch：${i + 1}/${items.length}　${label.slice(0, 40)}`, [], 0, pw);
+        this._progress(this._t('ui.headline', i + 1, items.length, label.slice(0, 40)), [], 0, pw);
         try {
-          results.push(await this._fetchOne(item, { outDir, email, allowBrowser, timeoutS }));
+          results.push(await this._fetchOne(item,
+            { outDir, email, allowBrowser, paywall, timeoutS, skipExisting }));
         }
         catch (e) {
-          this._log(`「${label}」失败：${e.message}`);
+          this._log(this._t('log.item_failed', label, e.message));
           results.push({ item, status: 'error', detail: e.message });
         }
       }
@@ -331,21 +392,21 @@ var LitFetch = {
       this.busy = false;
       this.pw = null;               // 这轮完了就别再往后端推的行里加东西
       const lines = results.map((r) => r.line);
-      this._progress(`lit-fetch：完成 ${results.filter((r) => r.status === 'ok').length}/${results.length}`,
-        lines, results.length ? 15000 : 6000, pw);
+      this._progress(this._t('ui.done', results.filter((r) => r.status === 'ok').length,
+        results.length), lines, results.length ? 15000 : 6000, pw);
       lines.forEach((l) => this._log(l));
     }
   },
 
   async _fetchOne(item, opts) {
     const title = item.getField('title') || '';
-    const short = title.slice(0, 40) || `条目 ${item.id}`;
-    if (this._pref('skipExisting', true) && this._hasPdf(item)) {
-      return { item, status: 'skip', line: `【已有】${short}` };
+    const short = title.slice(0, 40) || this._t('ui.item', item.id);
+    if (opts.skipExisting && this._hasPdf(item)) {
+      return { item, status: 'skip', line: this._t('res.have', short) };
     }
     const identifier = this._identifierFor(item);
     if (!identifier) {
-      return { item, status: 'noid', line: `【无标识符】${short}` };
+      return { item, status: 'noid', line: this._t('res.noid', short) };
     }
     const base = LitFetchCore.fileBaseName({
       creators: item.getCreators(),
@@ -360,6 +421,7 @@ var LitFetch = {
       title,
       email: opts.email,
       allow_browser: !!opts.allowBrowser,
+      paywall: !!opts.paywall,
     }, opts.timeoutS * 1000);
 
     if (!env || !env.ok) {
@@ -367,7 +429,7 @@ var LitFetch = {
         return {
           item,
           status: 'paywall',
-          line: `【付费墙】${short} — 没有 OA 副本（Unpaywall: ${env.oa_status || 'closed'}），不是被墙`,
+          line: this._t('res.paywall', short, env.oa_status || 'closed'),
         };
       }
       const why = (env && (env.blocked_kind || env.blocked_by)) || 'unknown';
@@ -375,7 +437,8 @@ var LitFetch = {
       return {
         item,
         status: 'fail',
-        line: `【失败】${short} — ${identifier}｜${why}${code !== undefined ? ` (exit ${code})` : ''}`,
+        line: this._t('res.failed', short, identifier, why,
+          code !== undefined ? ` (exit ${code})` : ''),
       };
     }
 
@@ -388,14 +451,14 @@ var LitFetch = {
       });
     }
     catch (e) {
-      this._log(`附件导入失败（文件已下到 ${env.path || out}）：${e.message}`);
-      return { item, status: 'fail', line: `【下载成功但挂不上去】${short} — 文件在 ${env.path || out}` };
+      this._log(this._t('log.attach_failed', env.path || out, e.message));
+      return { item, status: 'fail', line: this._t('res.orphan', short, env.path || out) };
     }
     await IOUtils.remove(env.path || out, { ignoreAbsent: true });
     return {
       item,
       status: 'ok',
-      line: `【已补】${short} — ${env.route || '?'} ${Math.round((env.bytes || 0) / 1024)}KB`,
+      line: this._t('res.added', short, env.route || '?', Math.round((env.bytes || 0) / 1024)),
     };
   },
 
@@ -403,16 +466,22 @@ var LitFetch = {
   _progress(headline, lines, closeAfterMs, existing) {
     try {
       const pw = existing || new Zotero.ProgressWindow({ closeOnClick: true });
+      pw.show();                 // 先确保窗还在：changeHeadline/addLines 都是「等窗加载」的延迟调用
       pw.changeHeadline(headline);
       if (lines && lines.length) {
         pw.addLines(lines);
       }
-      pw.show();
-      pw.startCloseTimer(closeAfterMs || 0);
+      // ponytail: Zotero 7 的 startCloseTimer 收的是**毫秒**，`0` 就是「下一个 tick 关窗」（旧 API 是秒，
+      // 那时 0 才有「不自动关」的意思）。以前每次换标题都 `startCloseTimer(closeAfterMs || 0)`，
+      // 于是多条目连着下的时候，第一篇的进度一出现就被自己关掉，后面的条目再没有提示。
+      // 现在只在明确给了正数时才设关闭计时器（收尾那次传 15000＝15 秒）。
+      if (closeAfterMs > 0) {
+        pw.startCloseTimer(closeAfterMs);
+      }
       return pw;
     }
     catch (e) {
-      this._log(`进度窗失败：${e.message}`);
+      this._log(this._t('log.pw_failed', e.message));
       return existing || null;
     }
   },
@@ -420,7 +489,7 @@ var LitFetch = {
   _onProgress(params) {
     const stage = params.stage;
     if (stage === 'start') {
-      this._addProgressLine(`▸ 处理 ${params.identifier || ''}`.trim());
+      this._addProgressLine(this._t('ui.processing', params.identifier || '').trim());
       return;
     }
     if (stage === 'note') {
@@ -430,7 +499,7 @@ var LitFetch = {
       return;
     }
     if (stage === 'done' && params.ok === false) {
-      this._log(`后端报失败：${params.identifier} ${params.route || ''} exit=${params.exit_code}`);
+      this._log(this._t('log.backend_failed', params.identifier, params.route || '', params.exit_code));
     }
   },
 
@@ -442,12 +511,12 @@ var LitFetch = {
       return;
     }
     try {
+      pw.show();                  // 用户点掉过 / 上一轮关过就开回来（addLines 会排进「等窗加载」队列）
       pw.addLines([text]);
-      pw.show();
       this.pwLines++;
     }
     catch (e) {
-      this._log(`进度窗加行失败：${e.message}`);
+      this._log(this._t('log.pw_line_failed', e.message));
     }
   },
 
@@ -457,8 +526,8 @@ var LitFetch = {
   },
 
   _fail(e) {
-    this._log(`未捕获：${e && e.stack ? e.stack : e}`);
-    this._progress('lit-fetch：出错了（详见 Help→Debug Output / litfetch.log）', [], 8000);
+    this._log(this._t('log.uncaught', e && e.stack ? e.stack : e));
+    this._progress(this._t('ui.err'), [], 8000);
   },
 
   _log(msg) {

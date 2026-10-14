@@ -19,11 +19,13 @@ import re
 import subprocess
 import sys
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "litfetch.xpi"
-FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js", "icon.png", "icon@2x.png"]
+FILES = ["manifest.json", "bootstrap.js", "litfetch.js", "core.js", "i18n.js",
+         "preferences.xhtml", "preferences.js", "icon.png", "icon@2x.png"]
 
 
 def find_node() -> str | None:
@@ -97,6 +99,49 @@ def check_js(node: str | None) -> None:
     print(f"JS OK：{len(js)} 个文件语法通过、无 innerHTML 赋值" + ("" if node else "（node 缺席）"))
 
 
+def check_prefs() -> None:
+    """设置面板上绑的 pref 名字必须和 litfetch.js `_defaults()` 的键一一对上。
+
+    拼错一个名字不会有任何报错，只会变成一个「点了没反应的开关」—— 只能静态查。
+    """
+    js = (HERE / "litfetch.js").read_text(encoding="utf-8")
+    block = re.search(r"_defaults\(\)\s*\{(.*?)\n  \},", js, re.S)
+    assert block, "litfetch.js 里找不到 _defaults()"
+    defaults = set(re.findall(r"^\s*(\w+):", block.group(1), re.M))
+    xhtml = (HERE / "preferences.xhtml").read_text(encoding="utf-8")
+    bound = set(re.findall(r'preference="extensions\.litfetch\.(\w+)"', xhtml))
+    only_xhtml = bound - defaults
+    only_defaults = defaults - bound
+    assert not only_xhtml, f"preferences.xhtml 绑了 _defaults() 里没有的 pref：{sorted(only_xhtml)}"
+    assert not only_defaults, f"_defaults() 里有面板没暴露的 pref：{sorted(only_defaults)}"
+    print(f"pref 对齐 OK：面板 {len(bound)} 个控件 ↔ _defaults() {len(defaults)} 项")
+
+
+def check_i18n_usage() -> None:
+    """xhtml / js 里引用的文案键必须在 i18n.js 里存在（拼错只会在界面上显示 key 本身）。"""
+    keys = set(re.findall(r"'([a-z]+\.[\w.]+)':", (HERE / "i18n.js").read_text(encoding="utf-8")))
+    assert keys, "i18n.js 里一个文案键都没读到"
+    used: set[str] = set()
+    for name in ("preferences.xhtml", "litfetch.js", "preferences.js"):
+        text = (HERE / name).read_text(encoding="utf-8")
+        used |= set(re.findall(r'data-lf(?:-label)?="([a-z]+\.[\w.]+)"', text))
+        used |= set(re.findall(r"(?:this\.)?_t\('([a-z]+\.[\w.]+)'", text))
+    missing = used - keys
+    assert not missing, f"这些文案键 i18n.js 里没有：{sorted(missing)}"
+    print(f"文案键 OK：用到 {len(used)} 个，i18n.js 里都有")
+
+
+def check_pane_xhtml() -> None:
+    """preferences.xhtml 必须是良构 XML（Zotero 用 MozXULElement.parseXULToFragment 解它，
+    坏一个标签的表现是「设置面板一片空白」）。`html:` 前缀补个 xmlns 再交给标准解析器。"""
+    src = (HERE / "preferences.xhtml").read_text(encoding="utf-8")
+    body = src.replace('<vbox id="litfetch-prefpane">',
+                       '<vbox id="litfetch-prefpane" xmlns:html="http://www.w3.org/1999/xhtml">', 1)
+    root = ET.fromstring(body)          # 不合法会抛 ParseError
+    assert root.tag.endswith("vbox"), f"根节点是 {root.tag}，应为 vbox"
+    print(f"设置面板 OK：良构 XML，根 <{root.tag}>，{len(list(root.iter()))} 个节点")
+
+
 def build() -> None:
     for rel in FILES:
         assert (HERE / rel).exists(), f"缺文件：{rel}"
@@ -119,6 +164,9 @@ def main() -> int:
     m = check_manifest()
     check_compat(m)
     check_js(node)
+    check_prefs()
+    check_i18n_usage()
+    check_pane_xhtml()
     build()
     print("build.py: 全部通过")
     return 0

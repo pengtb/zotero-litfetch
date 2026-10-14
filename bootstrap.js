@@ -31,6 +31,8 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
     ctx._globalThis = ctx;
     Services.scriptloader.loadSubScript(rootURI + 'core.js', ctx); // 纯逻辑，可 node 自检
     _bootLog('core.js 载入 OK');
+    Services.scriptloader.loadSubScript(rootURI + 'i18n.js', ctx);  // 界面/日志文案（zh/en）
+    _bootLog('i18n.js 载入 OK');
     Services.scriptloader.loadSubScript(rootURI + 'litfetch.js', ctx); // Zotero 侧
     _bootLog(`litfetch.js 载入 OK（Zotero.LitFetch=${typeof Zotero.LitFetch}）`);
 

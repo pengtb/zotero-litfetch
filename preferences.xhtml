@@ -1,0 +1,72 @@
+<!-- lit-fetch 的设置面板（Zotero 7+）。挂载见 litfetch.js 的 _registerPrefsPane()。
+     三条约定：
+       1. 文案不写死在这里 —— 带 data-lf（写 textContent）/ data-lf-label（写 label 属性）的元素由
+          preferences.js 按 pref `lang` 实时填上（文案表在 i18n.js，键是 pane.*）。
+       2. pref 绑定用 Zotero 自己的 `preference` 属性机制（它读写都带 global=true，落的就是
+          extensions.litfetch.*；不带那个参数会落到 extensions.zotero.* 去，见 litfetch.js 的 _pref 注释）。
+       3. 这里不写 onload/oncommand —— 面板脚本跑在沙箱里，内联属性按窗口作用域求值会 ReferenceError，
+          事件都在 preferences.js 里 addEventListener（见那儿顶部的注释）。 -->
+<vbox id="litfetch-prefpane">
+	<vbox class="main-section">
+		<groupbox>
+			<label><html:h2 data-lf="pane.section.fetch"/></label>
+
+			<checkbox preference="extensions.litfetch.allowBrowser" native="true"
+				data-lf-label="pane.allowBrowser"/>
+			<description class="indented-pref" data-lf="pane.allowBrowser.hint"/>
+
+			<checkbox preference="extensions.litfetch.paywall" native="true"
+				data-lf-label="pane.paywall"/>
+			<description class="indented-pref" data-lf="pane.paywall.hint"/>
+
+			<checkbox preference="extensions.litfetch.skipExisting" native="true"
+				data-lf-label="pane.skipExisting"/>
+
+			<hbox align="center">
+				<label control="litfetch-timeout" data-lf="pane.timeout"/>
+				<html:input id="litfetch-timeout" class="html-input" type="text" size="6"
+					preference="extensions.litfetch.timeoutS"/>
+			</hbox>
+		</groupbox>
+
+		<groupbox>
+			<label><html:h2 data-lf="pane.section.lang"/></label>
+			<hbox align="center">
+				<label control="litfetch-lang" data-lf="pane.lang.label"/>
+				<menulist id="litfetch-lang" preference="extensions.litfetch.lang" native="true">
+					<menupopup>
+						<menuitem value="auto" data-lf-label="pane.lang.auto"/>
+						<menuitem value="zh" label="中文"/>
+						<menuitem value="en" label="English"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+		</groupbox>
+
+		<groupbox>
+			<label><html:h2 data-lf="pane.section.paths"/></label>
+			<description data-lf="pane.paths.hint"/>
+
+			<hbox align="center">
+				<label flex="0" data-lf="pane.paths.python"/>
+				<html:input class="html-input" type="text" flex="1"
+					preference="extensions.litfetch.python"/>
+			</hbox>
+			<hbox align="center">
+				<label flex="0" data-lf="pane.paths.script"/>
+				<html:input class="html-input" type="text" flex="1"
+					preference="extensions.litfetch.script"/>
+			</hbox>
+			<hbox align="center">
+				<label flex="0" data-lf="pane.paths.outDir"/>
+				<html:input class="html-input" type="text" flex="1"
+					preference="extensions.litfetch.outDir"/>
+			</hbox>
+			<hbox align="center">
+				<label flex="0" data-lf="pane.paths.email"/>
+				<html:input class="html-input" type="text" flex="1"
+					preference="extensions.litfetch.email"/>
+			</hbox>
+		</groupbox>
+	</vbox>
+</vbox>

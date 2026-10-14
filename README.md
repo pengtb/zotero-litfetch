@@ -16,9 +16,10 @@
 
 多选条目可一起跑；串行执行，一条失败不影响后面的。已有 PDF 附件的条目默认跳过。
 
-## 配置（设置 → 高级 → 配置编辑器）
+## 设置（编辑 → 设置 → lit-fetch）
 
-插件不写默认 pref，读不到就用下面的缺口值，所以这些键**不设也能用**：
+设置面板里有 9 项，跟下面的 pref 一一对应（面板首次打开时会把没设过的 pref 补成缺口值，所以
+配置编辑器里也能看到实际生效的值；面板文案跟着 `lang` 走）：
 
     extensions.litfetch.python       python 解释器（默认 lit-fetch 的 .venv/Scripts/python.exe；
                                      不存在则退回 PATH 上的 python）
@@ -26,16 +27,32 @@
     extensions.litfetch.outDir       下载临时目录（默认 <数据目录>/litfetch，挂上附件后删掉）
     extensions.litfetch.email        OA 接口用的联系邮箱
     extensions.litfetch.allowBrowser 是否允许走浏览器那层（默认 true）
+    extensions.litfetch.paywall      付费刊要不要试一次出版商正文页（默认 true；关掉=只做开放获取）
+                                     有机构 IP（校网/VPN）时才拿得到，见 lit-fetch 的 README
+    extensions.litfetch.lang         界面与日志语言：auto|zh|en（默认 auto=跟 Zotero 界面语言）
     extensions.litfetch.timeoutS     单条超时秒数（默认 600）
     extensions.litfetch.skipExisting 已有 PDF 就跳过（默认 true）
 
+也可以直接改配置编辑器（设置 → 高级 → 配置编辑器）里 `extensions.litfetch.*` 这些键，效果一样。
+**读写 pref 必须带第二个参数 `true`**（`Zotero.Prefs.get(name, true)`）：不带时 Zotero 会在名字前加
+`extensions.zotero.`，`extensions.litfetch.*` 永远读不到 —— 插件 v0.1.6 之前就是这么写的，等于所有
+设置都不生效，v0.1.7 修掉。
+
+`lang` 管插件自己的文案（菜单、进度窗、结果行、litfetch.log、设置面板）；后端 lit-fetch 推过来的诊断行
+（`→ 试 unpaywall: …`）是它自己的输出，仍是中文。改这些设置立即生效，不用重启 Zotero。
+
 日志：`<数据目录>/litfetch.log`，同时走 Zotero 的帮助 → 调试输出日志。
+
+自检（改完 JS 跑一遍）：`node i18n.test.js`（文案 key/占位符对齐）、`node litfetch.progress.test.js`
+（进度窗那两处坑：Zotero 7 的 `startCloseTimer` 单位是毫秒、加行前先 show）、`node core.test.js`；
+`python build.py` 另外查 manifest / 兼容性 / 语法 / 面板与 `_defaults()` 的 pref 对齐 / 文案键 / 面板 XML 良构。
 
 ## 已知边界
 
 - 每条只用一个标识符：DOI 优先，其次 arXiv，再次 PMID（Zotero 的 `extractIdentifiers` 就是这个顺序）。
   ISBN / adsBibcode 不认。条目没有任何标识符时会被跳过并在结果里标「无标识符」。
-- 付费墙文献仍然拿不到（lit-fetch 只走 OA 路线），这点和工具的边界一致。
+- 付费墙文献：默认会试一次出版商的正文页（`paywall`），有机构 IP（校网/VPN）时能拿到，拿不到就报
+  「付费墙」；把 `paywall` 设成 false 就回到「只做开放获取」。
 - 常驻子进程在插件卸载/停用时被杀；它自己会在 stdin 关闭（Zotero 退出）时退出。
   子进程会拉一个 Edge，所以别在它跑的时候手动清浏览器 profile。
 
