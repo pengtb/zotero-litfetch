@@ -9,7 +9,12 @@
 ## 装
 
 直接下最新的 `.xpi`（[releases/latest](https://github.com/pengtb/zotero-litfetch/releases/latest)），
-或自己构建：`python build.py` 会做 manifest / 兼容性 / 语法 / 图标四组自检并打出 `litfetch.xpi`。
+或自己构建：`python build.py` 会做 manifest / 兼容性 / 语法 / 图标 / 设置面板 pref 对齐 / 文案键 /
+面板 XML 良构这几组自检并打出 `litfetch.xpi`。
+
+当前源码版本 **0.1.9**。0.1.7 起的变化：设置面板（抓取/语言/路径三段 9 项）+ 界面与日志语言（`lang`）+
+付费墙开关（`paywall`），并修掉「pref 不带 `global=true` 所以所有设置都不生效」这个老 bug；
+0.1.8 修设置面板接不上（初始化改走 xhtml 的 `onload`，函数挂 `Zotero` 上）；0.1.9 进度窗改成每篇换新。
 
 1. Zotero → 工具 → 插件 → 齿轮 → Install Plugin From File… 选那个 `.xpi`（未签名提示选允许）。
 2. 重启后：在条目上右键，菜单里出现「补 PDF（lit-fetch）」。
@@ -45,9 +50,11 @@
 
 日志：`<数据目录>/litfetch.log`，同时走 Zotero 的帮助 → 调试输出日志。
 
-自检（改完 JS 跑一遍）：`node i18n.test.js`（文案 key/占位符对齐）、`node litfetch.progress.test.js`
-（进度窗那两处坑：Zotero 7 的 `startCloseTimer` 单位是毫秒、加行前先 show）、`node core.test.js`；
-`python build.py` 另外查 manifest / 兼容性 / 语法 / 面板与 `_defaults()` 的 pref 对齐 / 文案键 / 面板 XML 良构。
+自检（改完 JS 跑一遍）：`node i18n.test.js`（文案 key 中英对齐 / 占位符一致 / resolve）、
+`node litfetch.progress.test.js`（进度窗那三处坑：Zotero 7 的 `startCloseTimer` 单位是毫秒、加行前先
+show、每篇换新窗要先 close 上一篇）、`node core.test.js`（纯逻辑）；
+`python build.py` 另外查 manifest / 兼容性 / 语法 / 面板与 `_defaults()` 的 pref 对齐 / 文案键是否存在 /
+面板 XML 良构，然后打包。
 
 ## 已知边界
 
@@ -60,9 +67,19 @@
 
 ## 开发
 
-    node core.test.js          # 纯逻辑自检（标识符挑选 / 文件名 / 帧拆分）
-    python probe_rpc.py        # 按插件真实发的帧敲 lit_fetch.py rpc，验证接口对得上
-    python build.py            # 打包 + manifest/语法/l10n 自检
+    node core.test.js              # 纯逻辑自检（标识符挑选 / 文件名 / 帧拆分）
+    node i18n.test.js              # 文案表自检（zh/en key 对齐、占位符、语言解析）
+    node litfetch.progress.test.js # 进度窗行为自检（Zotero 的 ProgressWindow 用 stub 顶掉）
+    python probe_rpc.py            # 按插件真实发的帧敲 lit_fetch.py rpc，验证接口对得上
+    python build.py                # 打包 + manifest/兼容性/语法/pref 对齐/文案键/面板 XML 自检
 
-`core.js` 是纯逻辑（可以 node 跑），`litfetch.js` 是 Zotero 侧（菜单、子进程、附件导入），
-`bootstrap.js` 是生命周期。
+`bootstrap.js` 是生命周期（加载 core.js → i18n.js → litfetch.js），`core.js` 是纯逻辑（node 可跑），
+`i18n.js` 是文案表（zh/en，60+ 条），`litfetch.js` 是 Zotero 侧（菜单、子进程、附件导入、进度窗），
+`preferences.xhtml` + `preferences.js` 是设置面板（文案走 i18n，pref 绑定交给 Zotero 的 `preference` 机制）。
+
+两个坑记在这（都是实测踩出来的，改面板/进度窗之前先读）:
+
+- 面板脚本跑在 `Cu.Sandbox` 里，`var` 不会泄漏到窗口；而 xhtml 的内联事件属性按「元素所在窗口」的
+  作用域求值 —— 所以初始化函数必须挂到 `Zotero.*` 上、用 `onload`/`oncommand` 调（本机
+  better-bibtex / jasminum / custom-columns / reading-list 都是这么接的）。
+- `Zotero.Prefs.get/set` 不带第二个参数 `true` 时会被加上 `extensions.zotero.` 前缀。
